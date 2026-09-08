@@ -66,6 +66,27 @@ EXCLUDE_TERMS = [
 ]
 
 
+def parse_completion_body(text):
+    """Parse the first complete JSON object from an API body that may carry
+    an SSE trailer like 'data: [DONE]' appended after the JSON object."""
+    body = text.strip()
+    for prefix in ("data:", "data :"):
+        if body.startswith(prefix):
+            body = body[len(prefix):].lstrip()
+    if body.rstrip().endswith("data: [DONE]"):
+        body = body.rstrip()[: -len("data: [DONE]")]
+    decoder = json.JSONDecoder()
+    # completion bodies are objects starting with '{'; scan for '{' first
+    for m in re.finditer(r"[{\[]", body):
+        try:
+            obj, _ = decoder.raw_decode(body, m.start())
+            if isinstance(obj, dict):  # prefer the outer completion object
+                return obj
+        except Exception:
+            continue
+    return None
+
+
 def llm_extract(provider, text):
     """Use OpenAI-compatible LLM endpoint. Returns list of dicts or None."""
     if not BASE_URL or not AI_MODEL:
@@ -90,7 +111,11 @@ def llm_extract(provider, text):
             if not r.ok:
                 print(f"  [llm] HTTP {r.status_code} for {provider} (attempt {attempt+1}): {r.text[:300]}", flush=True)
                 continue
-            content = r.json()["choices"][0]["message"]["content"]
+            obj = parse_completion_body(r.text)
+            if not obj:
+                print(f"  [llm] no JSON object for {provider} (attempt {attempt+1}): {r.text[:200]}", flush=True)
+                continue
+            content = obj["choices"][0]["message"]["content"]
             parsed = parse_llm_json(content, provider)
             if parsed:
                 return parsed
