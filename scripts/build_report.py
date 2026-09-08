@@ -75,7 +75,16 @@ def main():
         sys.exit(f"No normalized data for {args.date}: {in_file}")
 
     records = json.loads(in_file.read_text(encoding="utf-8"))
-    # normalizing provider names to display form
+    # defensive dedupe: same model name from multiple providers → cheapest wins
+    seen = {}
+    for rec in records:
+        key = (rec.get("model") or "").strip().lower()
+        if not key:
+            continue
+        cur = seen.get(key)
+        if cur is None or sort_key(rec) < sort_key(cur):
+            seen[key] = rec
+    records = list(seen.values())
     records.sort(key=sort_key)
 
     by_modality = {}

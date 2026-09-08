@@ -76,15 +76,17 @@ ai-catalogs/
 ### 3. Normalization with Third-party LLM API
 
 - Feed raw scraped content to the third-party OpenAI-compatible LLM (`BASE_URL` / `AI_MODEL` / `AI_KEY`)
+- **LLM extraction is mandatory — no heuristic fallback**; the run fails loudly if the LLM is unavailable
 - Extract and normalize to a common schema:
   - provider, model, modality (text/vision)
   - input_price, output_price, cached_price
   - unit, currency (default USD)
   - scraped_at timestamp
 - **Keep only coding-capable models**; drop pure image/video/audio generation models
+- **Deduplicate models** — the same model listed by multiple providers appears once (cheapest wins)
+- `model` must always be the real model name (never a table header, label, or note)
 - Handle inconsistencies (strikethrough discounts, "Free", empty values)
 - Save normalized JSON to `data/normalized/<date>/`
-- Fall back to heuristic extraction if the API is unavailable
 
 ### 4. Sorting & Comparison
 

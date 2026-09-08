@@ -95,8 +95,9 @@ python scripts/scrape.py                # uses today
 }
 ```
 
-- Prefer LLM (third-party OpenAI-compatible API) extraction for robustness
-- Fall back to regex/heuristic extraction if LLM unavailable
+- LLM (third-party OpenAI-compatible API) extraction is **mandatory** — no heuristic fallback
+- Keep **coding models only**; exclude image/video/audio/embeddings
+- **Dedupe models** — the same model listed by multiple providers appears only once (cheapest wins)
 - Handle: "Free", strikethrough discounts, missing values, $ symbols
 
 **CLI**
@@ -105,11 +106,14 @@ python scripts/normalize.py --date 2026-09-08
 ```
 
 **Checklist**
+- [ ] Fails loudly if `BASE_URL`/`AI_MODEL` unset (no silent garbage output)
+- [ ] `model` field is always a real model name (never a table header/note)
 - [ ] Consistent schema for all providers
 - [ ] Correctly parse numbers from `$0.075`, `Free`, `-`
+- [ ] No duplicate models in output
 - [ ] Merge all providers into one normalized JSON file
 - [ ] Save to `data/normalized/<date>/all.json`
-- [ ] Validate schema (script should error on missing required fields)
+- [ ] Abort (non-zero exit) if zero records extracted
 
 ---
 
