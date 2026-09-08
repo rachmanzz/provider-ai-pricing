@@ -10,12 +10,64 @@ import argparse
 import datetime as dt
 import json
 import pathlib
+import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 NORM_DIR = ROOT / "data" / "normalized"
 HIST_DIR = ROOT / "data" / "history"
 PRICING = ROOT / "pricing.md"
+BEST_PRICING = ROOT / "pricing-best-models.md"
+SOURCES = ROOT / "sources.md"
+
+
+def best_models():
+    """Parse the 'Best Coding Models' table from sources.md into {lower_name: name}."""
+    text = SOURCES.read_text(encoding="utf-8")
+    best = {}
+    in_best = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("## Best Coding Models"):
+            in_best = True
+            continue
+        if in_best and stripped.startswith("## "):
+            break
+        if in_best and stripped.startswith("|") and "--" not in stripped:
+            cells = [c.strip() for c in stripped.strip("|").split("|")]
+            if len(cells) >= 2 and cells[0].isdigit():
+                name = cells[1]
+                best[name.lower()] = name
+    return best
+
+
+def tokens(name):
+    return [t for t in re.split(r"[^0-9a-z]+", name.lower()) if t]
+
+
+def matches_best(model, best):
+    """Match a normalized model name to one of the best-model names.
+
+    Token-prefix match (version-aware) preferring the most specific name:
+    'glm-5.3-flash' matches both 'glm-5.3' and 'glm-5.3-flash', picks the
+    longer; 'glm-5' does NOT match 'glm-5.3'.
+    """
+    m = tokens(model or "")
+    if not m:
+        return None
+    matched = None
+    for b, bname in best.items():
+        bt = tokens(b)
+        if len(bt) > len(m) or m[: len(bt)] != bt:
+            continue
+        if len(m) > len(bt):
+            nxt = m[len(bt)]
+            # don't allow a version extension (5 → 5.3) to count as a match
+            if bt and bt[-1].isdigit() and nxt.isdigit():
+                continue
+        if matched is None or len(bname) > len(matched):
+            matched = bname
+    return matched
 
 
 def sort_key(rec):
@@ -74,10 +126,10 @@ def main():
     if not in_file.exists():
         sys.exit(f"No normalized data for {args.date}: {in_file}")
 
-    records = json.loads(in_file.read_text(encoding="utf-8"))
+    raw = json.loads(in_file.read_text(encoding="utf-8"))
     # defensive dedupe: same model name from multiple providers → cheapest wins
     seen = {}
-    for rec in records:
+    for rec in raw:
         key = (rec.get("model") or "").strip().lower()
         if not key:
             continue
@@ -86,6 +138,15 @@ def main():
             seen[key] = rec
     records = list(seen.values())
     records.sort(key=sort_key)
+
+    best = best_models()
+    best_records = [
+        {"best_name": name, "rec": rec}
+        for rec in raw
+        for name in [matches_best(rec.get("model"), best)]
+        if name
+    ]
+    best_records.sort(key=lambda br: sort_key(br["rec"]))
 
     by_modality = {}
     for rec in records:
@@ -129,8 +190,56 @@ def main():
 
     PRICING.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"Wrote {PRICING} with {len(records)} records sorted cheapest → most expensive")
+
+    write_best_pricing(args.date, best_records)
+
     if changes:
         print(f"{len(changes)} price change(s) detected vs {prev}")
+
+
+def write_best_pricing(date_str, best_records):
+    """Write pricing-best-models.md: only the top best coding models,
+    listed cheapest → most expensive with the offering providers."""
+    rows = []
+    seen = set()
+    for br in best_records:
+        rec = br["rec"]
+        key = (rec.get("model") or "").strip().lower()
+        if key in seen:
+            continue  # same provider/model already listed
+        seen.add(key)
+        rows.append((br["best_name"], rec))
+    rows.sort(key=lambda r: sort_key(r[1]))
+
+    lines = []
+    lines.append("# AI Catalog Pricing — Best Coding Models")
+    lines.append("")
+    lines.append(f"_Generated: {date_str} 00:00 UTC · best coding models, sorted cheapest → most expensive_")
+    lines.append("")
+    models = set(r[0] for r in rows)
+    lines.append(f"**{len(models)} best coding models** offered by **{len(set(r[1]['provider'] for r in rows))} providers**.")
+    lines.append("")
+    lines.append("| Rank | Best Model | Provider | Input | Output | Cached | Unit | Notes |")
+    lines.append("|------|------------|----------|-------|--------|--------|------|-------|")
+    rank = 0
+    for best_name, rec in rows:
+        rank += 1
+        notes = (rec.get("notes") or "").replace("\n", " ")[:40]
+        lines.append(
+            f"| {rank} | {best_name} | {rec.get('provider','')} "
+            f"| {fmt_price(rec.get('input_price'))} | {fmt_price(rec.get('output_price'))} "
+            f"| {fmt_price(rec.get('cached_input_price'))} | {rec.get('unit','')} | {notes} |"
+        )
+    lines.append("")
+    missing = [name for name in best_models().values() if name.lower() not in {r[0].lower() for r in rows}]
+    if missing:
+        lines.append(f"Not found in today's catalog: {', '.join(missing)}")
+        lines.append("")
+        lines.append("_Providers may list these models on pages the scraper missed, or pricing is not public._")
+        lines.append("")
+
+    BEST_PRICING.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"Wrote {BEST_PRICING} with {len(models)} best models (from {len(rows)} provider offers)")
 
 
 if __name__ == "__main__":
