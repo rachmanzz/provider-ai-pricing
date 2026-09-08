@@ -1,0 +1,21 @@
+name: Debug LLM
+
+on:
+  workflow_dispatch:
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    env:
+      BASE_URL: ${{ secrets.BASE_URL }}
+      AI_MODEL: ${{ secrets.AI_MODEL }}
+      AI_KEY: ${{ secrets.AI_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install requests
+        run: pip install requests
+      - name: Debug LLM endpoint
+        run: python scripts/debug_llm.py

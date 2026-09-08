@@ -81,9 +81,13 @@ def llm_extract(provider, text):
     headers = {"Content-Type": "application/json"}
     if AI_KEY:
         headers["Authorization"] = f"Bearer {AI_KEY}"
+    # BASE_URL may end with /chat/completions already, or point at the /v1 root
+    endpoint = BASE_URL if BASE_URL.endswith("/chat/completions") else f"{BASE_URL}/chat/completions"
     try:
-        r = requests.post(f"{BASE_URL}/chat/completions", json=payload, headers=headers, timeout=90)
-        r.raise_for_status()
+        r = requests.post(endpoint, json=payload, headers=headers, timeout=90)
+        if not r.ok:
+            print(f"  [llm] HTTP {r.status_code} for {provider}: {r.text[:500]}")
+            return None
         content = r.json()["choices"][0]["message"]["content"]
         return parse_llm_json(content, provider)
     except Exception as exc:
