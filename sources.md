@@ -16,7 +16,7 @@ List of sources used to collect AI provider pricing data.
 | Cohere | https://cohere.com/pricing |
 | DeepSeek | https://api-docs.deepseek.com/quick_start/pricing |
 | Replicate | https://replicate.com/pricing |
-| Groq | https://groq.com/pricing |
+| Groq | https://console.groq.com/docs/models |
 | Fireworks AI | https://fireworks.ai/pricing |
 
 ## Best Coding Models (Top 13)
