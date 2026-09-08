@@ -19,6 +19,7 @@ import os
 import pathlib
 import re
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 
@@ -83,19 +84,19 @@ def llm_extract(provider, text):
         headers["Authorization"] = f"Bearer {AI_KEY}"
     # BASE_URL may end with /chat/completions already, or point at the /v1 root
     endpoint = BASE_URL if BASE_URL.endswith("/chat/completions") else f"{BASE_URL}/chat/completions"
-    for attempt in range(3):
+    for attempt in range(2):
         try:
-            r = requests.post(endpoint, json=payload, headers=headers, timeout=180)
+            r = requests.post(endpoint, json=payload, headers=headers, timeout=90)
             if not r.ok:
-                print(f"  [llm] HTTP {r.status_code} for {provider} (attempt {attempt+1}): {r.text[:300]}")
+                print(f"  [llm] HTTP {r.status_code} for {provider} (attempt {attempt+1}): {r.text[:300]}", flush=True)
                 continue
             content = r.json()["choices"][0]["message"]["content"]
             parsed = parse_llm_json(content, provider)
             if parsed:
                 return parsed
-            print(f"  [llm] unparseable JSON for {provider} (attempt {attempt+1}): {content[:200]}")
+            print(f"  [llm] unparseable JSON for {provider} (attempt {attempt+1}): {content[:200]}", flush=True)
         except Exception as exc:
-            print(f"  [llm] error for {provider} (attempt {attempt+1}): {exc}")
+            print(f"  [llm] error for {provider} (attempt {attempt+1}): {exc}", flush=True)
     return None
 
 
@@ -192,18 +193,25 @@ def main():
 
     all_records = []
     failed = []
-    for txt in sorted(raw_date.glob("*.txt")):
+
+    def process(txt):
         provider = txt.stem
         text = txt.read_text(encoding="utf-8")
-        print(f"Normalizing {provider}...")
+        print(f"Normalizing {provider}...", flush=True)
         records = llm_extract(provider, text)
-        if not records:
-            print(f"  !! LLM returned no usable records for {provider}")
-            failed.append(provider)
-            continue
-        coding = [r for r in records if is_coding_model(r)]
-        print(f"  -> {len(coding)}/{len(records)} coding models extracted")
-        all_records.extend(coding)
+        return provider, records
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        futures = [pool.submit(process, txt) for txt in sorted(raw_date.glob("*.txt"))]
+        for fut in as_completed(futures):
+            provider, records = fut.result()
+            if not records:
+                print(f"  !! LLM returned no usable records for {provider}", flush=True)
+                failed.append(provider)
+                continue
+            coding = [r for r in records if is_coding_model(r)]
+            print(f"  -> {len(coding)}/{len(records)} coding models extracted ({provider})", flush=True)
+            all_records.extend(coding)
 
     all_records = dedupe_models(all_records)
     print(f"After dedupe: {len(all_records)} unique models")

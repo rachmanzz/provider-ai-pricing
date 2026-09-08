@@ -27,13 +27,13 @@ jobs:
           python -m playwright install chromium --with-deps
 
       - name: Scrape
-        run: python scripts/scrape.py
+        run: python -u scripts/scrape.py
 
       - name: Normalize
-        run: python scripts/normalize.py
+        run: python -u scripts/normalize.py
 
       - name: Build report
-        run: python scripts/build_report.py
+        run: python -u scripts/build_report.py
 
       - name: Commit & push
         run: |
