@@ -69,7 +69,7 @@ def llm_extract(provider, text):
     """Use OpenAI-compatible LLM endpoint. Returns list of dicts or None."""
     if not BASE_URL or not AI_MODEL:
         return None
-    user = f"Provider: {provider}\n\nScraped page text:\n{text[:15000]}"
+    user = f"Provider: {provider}\n\nScraped page text:\n{text[:10000]}"
     payload = {
         "model": AI_MODEL,
         "messages": [
@@ -83,29 +83,56 @@ def llm_extract(provider, text):
         headers["Authorization"] = f"Bearer {AI_KEY}"
     # BASE_URL may end with /chat/completions already, or point at the /v1 root
     endpoint = BASE_URL if BASE_URL.endswith("/chat/completions") else f"{BASE_URL}/chat/completions"
-    try:
-        r = requests.post(endpoint, json=payload, headers=headers, timeout=90)
-        if not r.ok:
-            print(f"  [llm] HTTP {r.status_code} for {provider}: {r.text[:500]}")
-            return None
-        content = r.json()["choices"][0]["message"]["content"]
-        return parse_llm_json(content, provider)
-    except Exception as exc:
-        print(f"  [llm] error for {provider}: {exc}")
-        return None
+    for attempt in range(3):
+        try:
+            r = requests.post(endpoint, json=payload, headers=headers, timeout=180)
+            if not r.ok:
+                print(f"  [llm] HTTP {r.status_code} for {provider} (attempt {attempt+1}): {r.text[:300]}")
+                continue
+            content = r.json()["choices"][0]["message"]["content"]
+            parsed = parse_llm_json(content, provider)
+            if parsed:
+                return parsed
+            print(f"  [llm] unparseable JSON for {provider} (attempt {attempt+1}): {content[:200]}")
+        except Exception as exc:
+            print(f"  [llm] error for {provider} (attempt {attempt+1}): {exc}")
+    return None
 
 
 def parse_llm_json(content, provider):
-    """Robustly extract a JSON array from an LLM response."""
-    m = re.search(r"\[.*\]", content, re.S)
-    if not m:
-        return None
+    """Robustly extract a JSON array from an LLM response.
+
+    The model may return extra text after the array (markdown fences, second
+    code block, trailing notes). Find the first self-balanced JSON array and
+    parse only that.
+    """
+    data = None
     try:
-        data = json.loads(m.group(0))
+        data = json.loads(content)
     except Exception:
-        return None
-    if not isinstance(data, list):
-        return None
+        pass
+    if isinstance(data, list):
+        return _rows_from_list(data, provider)
+    for arr in _scan_json_arrays(content):
+        data = arr
+        break
+    if isinstance(data, list):
+        return _rows_from_list(data, provider)
+    return None
+
+
+def _scan_json_arrays(text):
+    """Yield substrings that are full balanced JSON arrays, in order."""
+    for m in re.finditer(r"\[", text):
+        try:
+            decoder = json.JSONDecoder()
+            obj, end = decoder.raw_decode(text, m.start())
+            yield obj
+        except Exception:
+            continue
+
+
+def _rows_from_list(data, provider):
     out = []
     for row in data:
         if not isinstance(row, dict):
