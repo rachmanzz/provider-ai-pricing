@@ -18,8 +18,6 @@ List of sources used to collect AI provider pricing data.
 | Replicate | https://replicate.com/pricing |
 | Groq | https://groq.com/pricing |
 | Fireworks AI | https://fireworks.ai/pricing |
-| OpenRouter | https://openrouter.ai/models |
-| Hugging Face | https://huggingface.co/pricing |
 
 ## Guide
 
