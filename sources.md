@@ -19,7 +19,7 @@ List of sources used to collect AI provider pricing data.
 | Groq | https://console.groq.com/docs/models |
 | Fireworks AI | https://fireworks.ai/pricing |
 
-## Best Coding Models (Top 13)
+## Best Coding Models (Top 14)
 
 Priority list of models tracked in the catalog for coding tasks. `pricing.md` compares these against each other.
 
@@ -38,6 +38,7 @@ Priority list of models tracked in the catalog for coding tasks. `pricing.md` co
 | 11 | MiniMax M3 | MiniMax | Efficient 1M context, cheap coding |
 | 12 | Muse Spark 1.3 | Meta | Strong agentic coding, 1M context |
 | 13 | GLM-5.3-Flash | Z.AI | Ultra-cheap high-speed coding |
+| 14 | Claude Sonnet 5 | Anthropic | Best code quality + tool use balance |
 
 ## Guide
 
