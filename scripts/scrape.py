@@ -57,6 +57,46 @@ def render_with_playwright(url: str, timeout_ms: int = 30000):
         return html, text
 
 
+CLICK_BUTTONS = {
+    # provider name (as in sources.md) -> list of button texts to click, in order
+    "Cheaper Inference": ["View all 66 models"],
+}
+
+
+def click_button_matching(page, label: str):
+    """Click the first visible button whose text (case-insensitive) contains label."""
+    for btn in page.query_selector_all("button"):
+        try:
+            if btn.is_visible() and label.lower() in (btn.inner_text() or "").lower():
+                btn.click()
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def render_with_playwright(url: str, timeout_ms: int = 30000, clicks=()):
+    """Load a JS-rendered page and return (html, text). Optionally click buttons."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page(user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120 Safari/537.36")
+        try:
+            page.goto(url, wait_until="networkidle", timeout=timeout_ms)
+        except Exception:
+            # fall back to domcontentloaded if networkidle times out
+            page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+        page.wait_for_timeout(2000)
+        for label in clicks:
+            if click_button_matching(page, label):
+                page.wait_for_timeout(1500)
+        html = page.content()
+        text = page.inner_text("body")
+        browser.close()
+        return html, text
+
+
 def fetch_plain(url: str, timeout: int = 30):
     r = requests.get(url, timeout=timeout, headers={"User-Agent": "Mozilla/5.0"})
     r.raise_for_status()
@@ -100,7 +140,7 @@ def main():
                 if args.no_render:
                     html, text = fetch_plain(url)
                 else:
-                    html, text = render_with_playwright(url)
+                    html, text = render_with_playwright(url, clicks=CLICK_BUTTONS.get(name, ()))
                 safe = save(args.date, name, html, text)
                 results.append({"provider": name, "url": url, "file": safe, "ok": True})
                 print(f"OK   {name}: {url}")
